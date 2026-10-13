@@ -201,6 +201,14 @@ class WebviewManager extends ValueNotifier<bool> {
         _webViews[browserId] as WebViewController;
         _webViews[browserId]?.listener?.onLoadEnd?.call(controller, urlId);
         return;
+      case 'onLoadError':
+        int browserId = call.arguments["browserId"] as int;
+        String urlId = call.arguments["urlId"] as String;
+        String errorText = call.arguments["errorText"] as String;
+        int errorCode = call.arguments["errorCode"] as int;
+        WebViewController controller = _webViews[browserId] as WebViewController;
+        _webViews[browserId]?.listener?.onLoadError?.call(controller, urlId, errorText, errorCode);
+        return;
       default:
     }
   }

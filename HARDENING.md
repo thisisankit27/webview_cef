@@ -24,6 +24,7 @@ security settings, but be careful to only load pages that you fully trust" (issu
 | `--no-sandbox` switch **and** `CefSettings.no_sandbox = true` | `common/webview_app.cc`, `common/webview_plugin.cc` | sandbox **on by default on Linux**; opt-out is explicit |
 | persistent profile in the platform default directory | (CEF default) | in-memory request context by default |
 | `SetEnableGPU()` existed but was never called | `common/webview_app.cc` | reachable via `initialize(enableGpu: true)` |
+| main-frame load errors rendered as a raw `data:` page ("Failed to load URL … with error …") | `common/webview_handler.cc` | reported through `WebviewEventsListener.onLoadError`; no page is rendered |
 
 ## What changed (modified files)
 
@@ -35,7 +36,9 @@ security settings, but be careful to only load pages that you fully trust" (issu
   **not** initialised and `init` returns an error `sandbox_unavailable: <reason>`. Sets
   `isCefInitialized` after start.
 * `common/webview_handler.cc`, `common/webview_handler.h` — one shared `CefRequestContext` for all
-  browsers; empty `cache_path` (in-memory) unless `cachePath` is given.
+  browsers; empty `cache_path` (in-memory) unless `cachePath` is given; `onLoadError` instead of the raw
+  `data:` error page.
+* `lib/src/webview_events_listener.dart` — `onLoadError`.
 * `lib/src/webview_manager.dart`, `lib/webview_cef.dart` — `initialize({sandbox, cachePath, enableGpu})`;
   `WebviewSandboxException`.
 * `lib/src/webview_sandbox.dart` (new) — `WebviewSandboxMode`, `WebviewSandboxException`.

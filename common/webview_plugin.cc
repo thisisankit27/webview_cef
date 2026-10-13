@@ -247,6 +247,28 @@ namespace webview_cef {
                 }
             };
 
+            m_handler->onLoadError = [=, this](int nBrowserId, std::string urlId, std::string errorText, int errorCode)
+            {
+                if (m_invokeFunc)
+                {
+                    WValue* bId = webview_value_new_int(nBrowserId);
+                    WValue* uId = webview_value_new_string(const_cast<char*>(urlId.c_str()));
+                    WValue* eText = webview_value_new_string(const_cast<char*>(errorText.c_str()));
+                    WValue* eCode = webview_value_new_int(errorCode);
+                    WValue* retMap = webview_value_new_map();
+                    webview_value_set_string(retMap, "browserId", bId);
+                    webview_value_set_string(retMap, "urlId", uId);
+                    webview_value_set_string(retMap, "errorText", eText);
+                    webview_value_set_string(retMap, "errorCode", eCode);
+                    m_invokeFunc("onLoadError", retMap);
+                    webview_value_unref(bId);
+                    webview_value_unref(uId);
+                    webview_value_unref(eText);
+                    webview_value_unref(eCode);
+                    webview_value_unref(retMap);
+                }
+            };
+
             m_handler->onLoadEnd = [=, this](int nBrowserId, std::string urlId)
             {
                 if (m_invokeFunc)

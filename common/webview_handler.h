@@ -61,6 +61,8 @@ public:
     std::function<void(std::string, std::string, std::string, int browserId, std::string)> onJavaScriptChannelMessage;
     std::function<void(int browserId, std::string url)> onLoadStart;
     std::function<void(int browserId, std::string url)> onLoadEnd;
+    // DNDReader: a main-frame load failed. Replaces upstream's raw `data:` error page.
+    std::function<void(int browserId, std::string url, std::string errorText, int errorCode)> onLoadError;
     
     explicit WebviewHandler();
     ~WebviewHandler();

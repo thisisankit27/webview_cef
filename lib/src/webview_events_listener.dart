@@ -13,6 +13,8 @@ typedef UrlChangeCb = void Function(String url);
  */
 typedef LoadStartCb = void Function(WebViewController controller, String url);
 typedef LoadStopCb = void Function(WebViewController controller, String url);
+// DNDReader: a main-frame load failed (url, CEF error text, CEF error code).
+typedef LoadErrorCb = void Function(WebViewController controller, String url, String errorText, int errorCode);
 
 typedef OnConsoleMessage = void Function(
     int level, String message, String source, int line);
@@ -23,6 +25,7 @@ class WebviewEventsListener {
   OnConsoleMessage? onConsoleMessage;
   LoadStartCb? onLoadStart;
   LoadStopCb? onLoadEnd;
+  LoadErrorCb? onLoadError;
 
   WebviewEventsListener({
     this.onTitleChanged,
@@ -30,5 +33,6 @@ class WebviewEventsListener {
     this.onConsoleMessage,
     this.onLoadStart,
     this.onLoadEnd,
+    this.onLoadError,
   });
 }

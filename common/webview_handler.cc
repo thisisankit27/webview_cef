@@ -207,14 +207,13 @@ void WebviewHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
     if (errorCode == ERR_ABORTED)
         return;
     
-    // Display a load error message using a data: URI.
-    std::stringstream ss;
-    ss << "<html><body bgcolor=\"white\">"
-    "<h2>Failed to load URL "
-    << std::string(failedUrl) << " with error " << std::string(errorText)
-    << " (" << errorCode << ").</h2></body></html>";
-    
-    frame->LoadURL(GetDataURI(ss.str(), "text/html"));
+    // DNDReader: upstream rendered a raw "Failed to load URL ..." page (a data:
+    // URI) into the frame. Report main-frame failures to the embedder instead, so
+    // it can show its own error state; sub-frame failures are not worth a page.
+    if (frame->IsMain() && onLoadError) {
+        onLoadError(browser->GetIdentifier(), std::string(failedUrl),
+                    std::string(errorText), static_cast<int>(errorCode));
+    }
 }
 
 void WebviewHandler::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
