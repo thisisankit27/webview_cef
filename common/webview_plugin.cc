@@ -333,26 +333,16 @@ namespace webview_cef {
 			reason = "the preflight check did not complete";
 			return false;
 		}
-		switch (WEXITSTATUS(status)) {
-			case 0:
-				return true;
-			case 11:
-				reason = "this system does not allow unprivileged user namespaces";
-				return false;
-			case 12:
-			case 13:
-			case 14:
-				reason = "user-namespace id mapping was refused";
-				return false;
-			case 15:
-			case 16:
-				reason = "the application is not permitted to create sandbox namespaces "
-				         "(an AppArmor user-namespace restriction is the usual cause)";
-				return false;
-			default:
-				reason = "the sandbox preflight failed";
-				return false;
+		const int stage = WEXITSTATUS(status);
+		if (stage == 0) {
+			return true;
 		}
+		// Stages 11-16 all mean "the namespaces Chromium's sandbox needs cannot be
+		// created by this program"; the stage number is kept for diagnostics.
+		reason = "this application is not permitted to create the user namespaces the browser sandbox "
+		         "needs (kernel setting, or an AppArmor restriction on Ubuntu 24.04 and later; "
+		         "preflight stage " + std::to_string(stage) + ")";
+		return false;
 	}
 #endif
 
