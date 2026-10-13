@@ -113,11 +113,15 @@ void WebviewApp::OnBeforeCommandLineProcessing(const CefString &process_type, Ce
 		}
 #endif
 
-		command_line->AppendSwitch("disable-web-security");                                     //disable web security
-		command_line->AppendSwitch("allow-running-insecure-content");                           //allow running insecure content in secure pages
+		// DNDReader hardening: upstream also appended `disable-web-security` and
+		// `allow-running-insecure-content` here, and disabled the SameSite cookie
+		// protections below. All three are removed; see HARDENING.md.
 		// Don't create a "GPUCache" directory when cache-path is unspecified.
 		command_line->AppendSwitch("disable-gpu-shader-disk-cache");                            //disable gpu shader disk cache
-        command_line->AppendSwitch("no-sandbox");
+		if (m_bNoSandbox)
+		{
+			command_line->AppendSwitch("no-sandbox");
+		}
 
 		//http://www.chromium.org/developers/design-documents/process-models
 		if (m_uMode == 1)
@@ -135,19 +139,14 @@ void WebviewApp::OnBeforeCommandLineProcessing(const CefString &process_type, Ce
 		}
 		command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");     //autoplay policy for media
 
-        //Support cross domain requests
         std::string values = command_line->GetSwitchValue("disable-features");
-        if (values == "")
-        {
-            values = "SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure";
-        }
-        else
-        {
-            values += ",SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure";
-        }
         if (values.find("CalculateNativeWinOcclusion") == size_t(-1))
         {
-            values += ",CalculateNativeWinOcclusion";
+            if (!values.empty())
+            {
+                values += ",";
+            }
+            values += "CalculateNativeWinOcclusion";
         }
 
         command_line->AppendSwitchWithValue("disable-features", values);
@@ -280,6 +279,11 @@ void WebviewApp::OnBrowserCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDi
 void WebviewApp::SetProcessMode(uint32_t uMode)
 {
     m_uMode = uMode;
+}
+
+void WebviewApp::SetNoSandbox(bool bNoSandbox)
+{
+    m_bNoSandbox = bNoSandbox;
 }
 
 void WebviewApp::SetEnableGPU(bool bEnable)

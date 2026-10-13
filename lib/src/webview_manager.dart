@@ -1,3 +1,4 @@
+import 'package:webview_cef/src/webview_sandbox.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -62,12 +63,32 @@ class WebviewManager extends ValueNotifier<bool> {
   /// the platform default, where it also keeps the process singleton lock that lets a second
   /// instance hand its request to the first one and exit. CEF only accepts an absolute path, a
   /// relative one is resolved against the working directory of the process.
-  Future<void> initialize({String? userAgent, String? rootCachePath}) async {
+  ///
+  /// DNDReader hardening (see HARDENING.md):
+  ///
+  /// * [sandbox] defaults to [WebviewSandboxMode.required]. On Linux a preflight check runs before
+  ///   CEF is initialised; if the sandbox cannot start, a [WebviewSandboxException] is thrown and
+  ///   nothing is started. (Windows/macOS keep upstream behaviour.)
+  /// * [cachePath], when given, makes the shared request context persistent in that directory (it
+  ///   must be inside the root cache path). The default, null, is an in-memory context: cookies and
+  ///   storage are never written to disk and are discarded when the application quits.
+  /// * [enableGpu] stops the plugin from passing `--disable-gpu`/`--disable-gpu-compositing`.
+  ///   Frames still reach Flutter as CPU pixel buffers.
+  Future<void> initialize({
+    String? userAgent,
+    String? rootCachePath,
+    WebviewSandboxMode sandbox = WebviewSandboxMode.required,
+    String? cachePath,
+    bool enableGpu = false,
+  }) async {
     _creatingCompleter = Completer<void>();
     try {
       final Map<String, String> settings = <String, String>{
         if (userAgent != null && userAgent.isNotEmpty) 'userAgent': userAgent,
         if (rootCachePath != null && rootCachePath.isNotEmpty) 'rootCachePath': rootCachePath,
+        if (sandbox == WebviewSandboxMode.disabled) 'sandbox': 'disabled',
+        if (cachePath != null && cachePath.isNotEmpty) 'cachePath': cachePath,
+        if (enableGpu) 'enableGpu': 'true',
       };
       if (settings.isNotEmpty) {
         await pluginChannel.invokeMethod('init', settings);
@@ -80,7 +101,13 @@ class WebviewManager extends ValueNotifier<bool> {
       _creatingCompleter.complete();
       value = true;
     } on PlatformException catch (e) {
-      _creatingCompleter.completeError(e);
+      final Object? details = e.details;
+      const String prefix = 'sandbox_unavailable: ';
+      if (details is String && details.startsWith(prefix)) {
+        _creatingCompleter.completeError(WebviewSandboxException(details.substring(prefix.length)));
+      } else {
+        _creatingCompleter.completeError(e);
+      }
     }
     return _creatingCompleter.future;
   }

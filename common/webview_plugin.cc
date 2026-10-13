@@ -13,11 +13,25 @@
 #include <iostream>
 #include <unordered_map>
 
+#ifdef __linux__
+#include <errno.h>
+#include <fcntl.h>
+#include <sched.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 namespace webview_cef {
 	CefMainArgs mainArgs;
 	CefRefPtr<WebviewApp> app;
 	CefString userAgent;
 	CefString rootCachePath;
+	// DNDReader hardening settings (see HARDENING.md)
+	bool sandboxDisabled = false;   // the sandbox is required unless the embedder opts out
+	bool enableGpu = false;
+	CefString requestContextCachePath;   // empty => in-memory (incognito) request context
 	bool isCefInitialized = false;
 #ifdef OS_MAC
 	std::string g_macSubprocessPath;
@@ -268,6 +282,80 @@ namespace webview_cef {
 	}
 
 
+#ifdef __linux__
+	// Can this process set up the namespaces Chromium's sandbox needs?
+	//
+	// CEF aborts the whole process (FATAL, SIGTRAP) when the sandbox cannot
+	// start, so the question has to be answered *before* CefInitialize. This
+	// performs, in a throw-away child, the operations Chromium's namespace
+	// sandbox performs: new user namespace, uid/gid mapping, new pid + net
+	// namespaces, then chroot into an empty directory (which needs a
+	// capability inside the new user namespace — exactly what Ubuntu's AppArmor
+	// userns restriction takes away from unconfined programs).
+	//
+	// The child uses only async-signal-safe calls. Returns true when the
+	// sandbox can start; otherwise [reason] says why, in user-presentable words.
+	static bool linuxSandboxPreflight(std::string& reason) {
+		char uidMap[64];
+		char gidMap[64];
+		snprintf(uidMap, sizeof(uidMap), "0 %u 1\n", static_cast<unsigned>(getuid()));
+		snprintf(gidMap, sizeof(gidMap), "0 %u 1\n", static_cast<unsigned>(getgid()));
+
+		const pid_t pid = fork();
+		if (pid < 0) {
+			reason = "the preflight check could not start a helper process";
+			return false;
+		}
+		if (pid == 0) {
+			auto writeFile = [](const char* path, const char* data) -> bool {
+				const int fd = open(path, O_WRONLY | O_CLOEXEC);
+				if (fd < 0) return false;
+				const size_t len = strlen(data);
+				const bool ok = write(fd, data, len) == static_cast<ssize_t>(len);
+				close(fd);
+				return ok;
+			};
+			if (unshare(CLONE_NEWUSER) != 0) _exit(11);
+			if (!writeFile("/proc/self/setgroups", "deny")) _exit(12);
+			if (!writeFile("/proc/self/uid_map", uidMap)) _exit(13);
+			if (!writeFile("/proc/self/gid_map", gidMap)) _exit(14);
+			if (unshare(CLONE_NEWPID | CLONE_NEWNET) != 0) _exit(15);
+			if (chroot("/proc/self/fdinfo") != 0) _exit(16);
+			_exit(0);
+		}
+
+		int status = 0;
+		pid_t waited;
+		do {
+			waited = waitpid(pid, &status, 0);
+		} while (waited < 0 && errno == EINTR);
+		if (waited < 0 || !WIFEXITED(status)) {
+			reason = "the preflight check did not complete";
+			return false;
+		}
+		switch (WEXITSTATUS(status)) {
+			case 0:
+				return true;
+			case 11:
+				reason = "this system does not allow unprivileged user namespaces";
+				return false;
+			case 12:
+			case 13:
+			case 14:
+				reason = "user-namespace id mapping was refused";
+				return false;
+			case 15:
+			case 16:
+				reason = "the application is not permitted to create sandbox namespaces "
+				         "(an AppArmor user-namespace restriction is the usual cause)";
+				return false;
+			default:
+				reason = "the sandbox preflight failed";
+				return false;
+		}
+	}
+#endif
+
     void WebviewPlugin::HandleMethodCall(std::string name, WValue* values, std::function<void(int ,WValue*)> result) {
 		if (name.compare("init") == 0){
 			if(!isCefInitialized){
@@ -282,12 +370,38 @@ namespace webview_cef {
 						if(cachePath != nullptr && webview_value_get_type(cachePath) == Webview_Value_Type_String){
 							rootCachePath = CefString(webview_value_get_string(cachePath));
 						}
+						WValue* sandbox = webview_value_get_by_string(values, "sandbox");
+						if(sandbox != nullptr && webview_value_get_type(sandbox) == Webview_Value_Type_String){
+							sandboxDisabled = std::string(webview_value_get_string(sandbox)) == "disabled";
+						}
+						WValue* gpu = webview_value_get_by_string(values, "enableGpu");
+						if(gpu != nullptr && webview_value_get_type(gpu) == Webview_Value_Type_String){
+							enableGpu = std::string(webview_value_get_string(gpu)) == "true";
+						}
+						WValue* contextPath = webview_value_get_by_string(values, "cachePath");
+						if(contextPath != nullptr && webview_value_get_type(contextPath) == Webview_Value_Type_String){
+							requestContextCachePath = CefString(webview_value_get_string(contextPath));
+						}
 					}
 					else{
 						userAgent = CefString(webview_value_get_string(values));
 					}
 				}
+#ifdef __linux__
+				if(!sandboxDisabled){
+					std::string reason;
+					if(!linuxSandboxPreflight(reason)){
+						// Fail closed: do not initialise CEF (it would abort the process).
+						const std::string message = "sandbox_unavailable: " + reason;
+						WValue* error = webview_value_new_string(message.c_str());
+						result(-1, error);
+						webview_value_unref(error);
+						return;
+					}
+				}
+#endif
 				startCEF();
+				isCefInitialized = true;
 			}
 			initCallback();
 			result(1, nullptr);
@@ -715,7 +829,21 @@ namespace webview_cef {
 	{
 		CefSettings cefs;
 		cefs.windowless_rendering_enabled = true;
+		// DNDReader hardening: the Chromium sandbox is on unless the embedder
+		// explicitly opted out. Windows/macOS keep upstream behaviour (their
+		// sandbox needs a bootstrap/helper layout this plugin does not provide).
+#ifdef __linux__
+		cefs.no_sandbox = sandboxDisabled;
+#else
 		cefs.no_sandbox = true;
+#endif
+		if(app){
+			app->SetNoSandbox(cefs.no_sandbox != 0);
+			if(enableGpu){
+				app->SetEnableGPU(true);
+			}
+		}
+		WebviewHandler::SetRequestContextCachePath(requestContextCachePath.ToString());
 		if(!userAgent.empty()){
 			CefString(&cefs.user_agent_product) = userAgent;
 		}

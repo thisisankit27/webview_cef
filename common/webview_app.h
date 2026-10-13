@@ -39,6 +39,8 @@ public:
         CefRefPtr<CefCommandLine> command_line) override;
     void SetProcessMode(uint32_t uMode);
     void SetEnableGPU(bool bEnable);
+    // DNDReader: the Chromium sandbox is ON unless the embedder explicitly disables it.
+    void SetNoSandbox(bool bNoSandbox);
     void OnContextInitialized() override;
     // CefRefPtr<CefClient> GetDefaultClient() override;
     void OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> command_line) override;
@@ -77,6 +79,11 @@ public:
 private:
     uint32_t                        m_uMode = 1;                        //process mode
     bool                            m_bEnableGPU = false;               //enable gpu
+#ifdef __linux__
+    bool                            m_bNoSandbox = false;               //sandbox on by default (Linux)
+#else
+    bool                            m_bNoSandbox = true;                //unchanged upstream behaviour elsewhere
+#endif
     CefString                       m_strFilterDomain;                  //insecure domain whitelist       
 
     CefRefPtr<WebviewHandler>       m_handler;                          //webview handler for main process

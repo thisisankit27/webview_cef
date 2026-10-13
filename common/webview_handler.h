@@ -155,6 +155,10 @@ public:
     void closeBrowser(int browserId);
     void createBrowser(std::string url, std::function<void(int)> callback);
 
+    // Cache path for the shared request context. Empty (the default) means an
+    // in-memory context: cookies and storage are never written to disk.
+    static void SetRequestContextCachePath(const std::string& path);
+
     // Drives one external BeginFrame for every live browser (GPU path only).
     // Marshals to the CEF UI thread; safe to call from any thread.
     void sendExternalBeginFrame();

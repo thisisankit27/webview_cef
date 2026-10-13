@@ -255,6 +255,12 @@ void WebviewHandler::closeBrowser(int browserId)
     }
 }
 
+static std::string g_requestContextCachePath;
+
+void WebviewHandler::SetRequestContextCachePath(const std::string& path) {
+    g_requestContextCachePath = path;
+}
+
 void WebviewHandler::createBrowser(std::string url, std::function<void(int)> callback)
 {
 #ifndef OS_MAC
@@ -281,7 +287,18 @@ void WebviewHandler::createBrowser(std::string url, std::function<void(int)> cal
     // an IDXGIOutput vblank wait, macOS from a CVDisplayLink.
     window_info.external_begin_frame_enabled = true;
 #endif
-    callback(CefBrowserHost::CreateBrowserSync(window_info, this, url, browser_settings, nullptr, nullptr)->GetIdentifier());
+    // DNDReader hardening: every browser shares one request context. With an
+    // empty cache_path CEF keeps it in memory, so no search cookies or storage
+    // reach the disk; a consent choice therefore lasts until the app quits.
+    static CefRefPtr<CefRequestContext> sharedContext;
+    if (!sharedContext) {
+        CefRequestContextSettings contextSettings;
+        if (!g_requestContextCachePath.empty()) {
+            CefString(&contextSettings.cache_path) = g_requestContextCachePath;
+        }
+        sharedContext = CefRequestContext::CreateContext(contextSettings, nullptr);
+    }
+    callback(CefBrowserHost::CreateBrowserSync(window_info, this, url, browser_settings, nullptr, sharedContext)->GetIdentifier());
 #ifdef WEBVIEW_CEF_GPU_TEXTURE
     // The GPU shared-texture path is the only render path on this build (no
     // OnPaint fallback). If no accelerated frame arrives shortly, the GPU
