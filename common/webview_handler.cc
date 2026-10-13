@@ -40,13 +40,6 @@ namespace {
 // The only browser that currently get focused
 CefRefPtr<CefBrowser> current_focused_browser_ = nullptr;
 
-// Returns a data: URI with the specified contents.
-std::string GetDataURI(const std::string& data, const std::string& mime_type) {
-    return "data:" + mime_type + ";base64," +
-    CefURIEncode(CefBase64Encode(data.data(), data.size()), false)
-        .ToString();
-}
-
 }  // namespace
 
 WebviewHandler::WebviewHandler() {
