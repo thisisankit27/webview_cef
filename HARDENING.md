@@ -61,6 +61,21 @@ Developed and tested **on Ubuntu 26.04 only**. On Windows and macOS the sandbox 
 changed (their sandbox needs a bootstrap/helper layout this plugin does not provide), but the three flag
 removals apply to every platform and have **not** been exercised there.
 
+## Windows is not a platform of this fork
+
+The `windows:` entry is **removed** from `flutter.plugin.platforms` in `pubspec.yaml`. DNDReader's Windows
+build uses WebView2 (`webview_flutter_windows`), not CEF, for two reasons:
+
+- CEF's Windows sandbox needs a bootstrap/DLL layout this plugin does not provide (`cef_sandbox.lib` no
+  longer ships from M138, and `common/webview_plugin.cc` sets `no_sandbox = true` on non-Linux), so a CEF
+  build on Windows would run unsandboxed.
+- Declaring the plugin on Windows makes Flutter download ~326 MB of CEF, compile `libcef_dll_wrapper`, and
+  bundle CEF's binaries into an app that never uses them.
+
+Trade-off: this fork is DNDReader-specific on this one axis, against the "small, deletion-heavy,
+upstreamable" intent above. The `windows/` directory is left in place so the diff stays one hunk; it is
+simply never built. Linux and macOS are untouched.
+
 ## Making the sandbox start on Ubuntu ≥ 24.04
 
 `kernel.apparmor_restrict_unprivileged_userns=1` denies capabilities to unprivileged user namespaces for

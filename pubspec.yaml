@@ -22,8 +22,6 @@ flutter:
     platforms:
       macos:
         pluginClass: WebviewCefPlugin
-      windows:
-        pluginClass: WebviewCefPluginCApi
       linux:
         pluginClass: WebviewCefPlugin
       elinux:
